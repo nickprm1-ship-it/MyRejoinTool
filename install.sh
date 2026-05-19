@@ -17,24 +17,16 @@ pkg install python-psutil -y
 pip install requests selenium webdriver-manager
 
 echo "[4/5] Downloading main tool..."
-URL="https://raw.githubusercontent.com/nickprm1-ship-it/MyRejoinTool/main/my_rejoin_tool.py"
-OUTPUT="/sdcard/Download/my_rejoin_tool.py"
+# ใช้ URL แบบเต็ม
+curl -L -o /sdcard/Download/my_rejoin_tool.py \
+  "https://raw.githubusercontent.com/nickprm1-ship-it/MyRejoinTool/main/my_rejoin_tool.py"
 
-# ดาวน์โหลดและตรวจสอบสถานะ
-if curl -fsSL -o "$OUTPUT" "$URL"; then
-    echo "✅ Download successful"
-else
-    echo "❌ Download failed (HTTP 404 or connection error)"
-    echo "   Please check if the file exists at: $URL"
-    exit 1
-fi
-
-# ตรวจสอบว่าไฟล์ที่โหลดมาขึ้นต้นด้วย #! (ไม่ใช่ 404)
-if ! head -n1 "$OUTPUT" | grep -q "^#!"; then
-    echo "❌ Downloaded file is not a valid Python script (might be 404 page)"
-    echo "   First line: $(head -n1 "$OUTPUT")"
+# ตรวจสอบว่าไฟล์ที่ดาวน์โหลดมาเป็นสคริปต์ Python จริงหรือไม่
+if ! head -n1 /sdcard/Download/my_rejoin_tool.py | grep -q "python"; then
+    echo "❌ ไฟล์ที่ดาวน์โหลดมาไม่ถูกต้อง (อาจเป็น 404 page)"
+    echo "🔍 ตรวจสอบลิงก์: https://raw.githubusercontent.com/nickprm1-ship-it/MyRejoinTool/main/my_rejoin_tool.py"
     exit 1
 fi
 
 echo "[5/5] Launching tool..."
-python "$OUTPUT"
+python /sdcard/Download/my_rejoin_tool.py
