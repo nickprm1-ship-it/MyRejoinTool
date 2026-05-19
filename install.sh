@@ -1,39 +1,40 @@
 #!/bin/bash
-# Auto Installer for My Rejoin Tool - Multi Account
-# Created by nickprm1-ship-it
-
 echo "========================================="
 echo "  MY REJOIN TOOL - INSTALLER"
-echo "  รองรับสูงสุด 10 บัญชี"
 echo "========================================="
 
-# ขออนุญาต Storage (Termux)
 termux-setup-storage
 
-# อัปเดตระบบ
-echo "[1/5] อัปเดตระบบ..."
+echo "[1/5] Updating packages..."
 pkg update -y && pkg upgrade -y
 
-# ติดตั้ง Python และ Chromium
-echo "[2/5] ติดตั้ง Python และ Chromium..."
+echo "[2/5] Installing Python & Chromium..."
 pkg install python -y
 pkg install chromium -y
 
-# ติดตั้ง Python libraries (ใช้ pkg สำหรับ psutil แทน pip)
-echo "[3/5] ติดตั้ง Python libraries..."
-pkg install python-psutil -y   # สำคัญ: ใช้ package ของ Termux
+echo "[3/5] Installing Python libraries..."
+pkg install python-psutil -y
 pip install requests selenium webdriver-manager
 
-# ดาวน์โหลดไฟล์หลัก
-echo "[4/5] ดาวน์โหลดโปรแกรมหลัก..."
-curl -Ls -o /sdcard/Download/my_rejoin_tool.py \
-  "https://raw.githubusercontent.com/nickprm1-ship-it/MyRejoinTool/main/my_rejoin_tool.py"
+echo "[4/5] Downloading main tool..."
+URL="https://raw.githubusercontent.com/nickprm1-ship-it/MyRejoinTool/main/my_rejoin_tool.py"
+OUTPUT="/sdcard/Download/my_rejoin_tool.py"
 
-# ตรวจสอบว่าดาวน์โหลดสำเร็จ
-if [ ! -f /sdcard/Download/my_rejoin_tool.py ]; then
-    echo "❌ ดาวน์โหลดไม่สำเร็จ (ไฟล์ไม่พบ)"
+# ดาวน์โหลดและตรวจสอบสถานะ
+if curl -fsSL -o "$OUTPUT" "$URL"; then
+    echo "✅ Download successful"
+else
+    echo "❌ Download failed (HTTP 404 or connection error)"
+    echo "   Please check if the file exists at: $URL"
     exit 1
 fi
 
-echo "[5/5] เสร็จสิ้น! กำลังเปิดโปรแกรม..."
-python /sdcard/Download/my_rejoin_tool.py
+# ตรวจสอบว่าไฟล์ที่โหลดมาขึ้นต้นด้วย #! (ไม่ใช่ 404)
+if ! head -n1 "$OUTPUT" | grep -q "^#!"; then
+    echo "❌ Downloaded file is not a valid Python script (might be 404 page)"
+    echo "   First line: $(head -n1 "$OUTPUT")"
+    exit 1
+fi
+
+echo "[5/5] Launching tool..."
+python "$OUTPUT"
