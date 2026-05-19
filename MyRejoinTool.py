@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Roblox Auto Rejoin System - Multi Account Edition
-# Version 10.0.0 | สนับสนุนสูงสุด 10 บัญชี
+# Roblox Auto Rejoin System - Termux Native Edition
+# รองรับหลายบัญชี ทำงานได้จริงบน Termux โดยไม่ต้องใช้ webdriver_manager
 
 import os
 import sys
@@ -19,22 +19,25 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.service import Service
 
-# ================== คงที่ ==================
+# ================== ค่าคงที่ ==================
 CONFIG_FILE = "rejoin_config.json"
-COOKIES_FILE = "cookies_list.json"      # เก็บหลาย cookie
+COOKIES_FILE = "cookies_list.json"
 PACKAGES_DB = "packages_db.json"
 PREFIX_FILE = "package_prefixes.json"
 ANDROID_ID_FILE = "android_id.txt"
 MAX_COOKIES = 10
 
+# พาธสำหรับ Termux (chromium และ chromedriver)
+CHROME_BINARY = "/data/data/com.termux/files/usr/bin/chromium"
+CHROMEDRIVER_PATH = "/data/data/com.termux/files/usr/bin/chromedriver"
+
 class RobloxRejoinSystem:
     def __init__(self):
         self.game_id = None
-        self.cookies = []                   # list ของ cookie strings
-        self.active_monitors = {}           # cookie -> thread (สำหรับ auto rejoin)
+        self.cookies = []
+        self.active_monitors = {}
         self.discord_enabled = False
         self.webhook_url = ""
         self.packages = {}
@@ -42,18 +45,17 @@ class RobloxRejoinSystem:
         self.user_setup_checked = False
         self.android_id = self.load_android_id()
         
-        # ข้อมูลระบบ
         self.system_info = {
             "cpu": "0%", "ram": "0MB/0MB", "disk": "0GB/0GB",
             "battery": "Unknown", "uptime": "0s", "os": "Unknown", "packages": "None"
         }
         
         self.load_config()
-        self.load_cookies()        # โหลดหลาย cookie
+        self.load_cookies()
         self.load_packages()
         self.load_prefixes()
     
-    # ------------------ โหลด/บันทึกข้อมูล ------------------
+    # ------------------ โหลด/บันทึก ------------------
     def load_config(self):
         try:
             with open(CONFIG_FILE, 'r') as f:
@@ -74,7 +76,6 @@ class RobloxRejoinSystem:
             json.dump(cfg, f, indent=4)
     
     def load_cookies(self):
-        """โหลด cookie ทั้งหมดจากไฟล์"""
         try:
             with open(COOKIES_FILE, 'r') as f:
                 data = json.load(f)
@@ -82,23 +83,19 @@ class RobloxRejoinSystem:
                 print(f"✅ โหลดคุกกี้ {len(self.cookies)} บัญชี")
         except:
             self.cookies = []
-            print("⚠️ ไม่พบไฟล์คุกกี้ เริ่มต้นใหม่")
     
     def save_cookies(self):
-        """บันทึก cookie ทั้งหมด"""
         with open(COOKIES_FILE, 'w') as f:
             json.dump({"cookies": self.cookies}, f, indent=4)
         print(f"✅ บันทึกคุกกี้ {len(self.cookies)} บัญชี")
     
     def add_cookie(self, cookie):
-        """เพิ่ม cookie ใหม่ (สูงสุด MAX_COOKIES)"""
         if cookie in self.cookies:
             print("❌ คุกกี้นี้มีอยู่แล้ว")
             return False
         if len(self.cookies) >= MAX_COOKIES:
             print(f"❌ เกินจำนวนสูงสุด {MAX_COOKIES} บัญชี")
             return False
-        # ทดสอบ cookie ว่าถูกต้องหรือไม่
         if self._test_cookie(cookie):
             self.cookies.append(cookie)
             self.save_cookies()
@@ -109,33 +106,25 @@ class RobloxRejoinSystem:
             return False
     
     def remove_cookie(self, index):
-        """ลบ cookie ตามลำดับ (1-indexed)"""
         if 1 <= index <= len(self.cookies):
             removed = self.cookies.pop(index-1)
             self.save_cookies()
             print(f"✅ ลบคุกกี้บัญชีที่ {index} เรียบร้อย")
-            # ถ้าลบขณะกำลังรัน auto rejoin ให้หยุดเธรดนั้นด้วย
-            if removed in self.active_monitors:
-                # ทำเครื่องหมายให้เธรดหยุด (เราจะใช้ flag อีกที)
-                pass
             return True
         else:
             print("❌ ไม่มีคุกกี้ลำดับนี้")
             return False
     
     def list_cookies(self):
-        """แสดงรายการ cookie พร้อมลำดับและ user ID ที่คาดเดา"""
         if not self.cookies:
             print("📭 ยังไม่มีคุกกี้")
             return
         print("\n📋 รายการคุกกี้ทั้งหมด:")
         for idx, ck in enumerate(self.cookies, 1):
-            # ดึง user ID แบบคร่าวๆ
             uid = self._extract_userid(ck)
             print(f"   {idx}. User ID: {uid} | Cookie: {ck[:30]}...")
     
     def _test_cookie(self, cookie):
-        """ทดสอบ cookie ว่าใช้ได้จริงไหม"""
         headers = {'Cookie': f'.ROBLOSECURITY={cookie}'}
         try:
             r = requests.get('https://www.roblox.com/home', headers=headers, timeout=10)
@@ -144,14 +133,11 @@ class RobloxRejoinSystem:
             return False
     
     def _extract_userid(self, cookie):
-        """ดึง user ID จาก cookie (รูปแบบ |user_id|...)"""
         try:
             parts = cookie.split('|')
-            if len(parts) > 1:
-                return parts[1]
+            return parts[1] if len(parts) > 1 else "unknown"
         except:
-            pass
-        return "unknown"
+            return "unknown"
     
     def load_packages(self):
         try:
@@ -189,56 +175,11 @@ class RobloxRejoinSystem:
             f.write(aid)
         self.android_id = aid
     
-    # ------------------ ฟังก์ชัน Auto Rejoin สำหรับหลายบัญชี ------------------
-    def start_auto_rejoin_all(self):
-        """เริ่ม auto rejoin ทุกบัญชีที่มี cookie"""
-        if not self.game_id:
-            print("❌ Chưa thiết lập Game ID! Hãy chọn [2] trước.")
-            return False
-        if not self.cookies:
-            print("❌ ไม่มีคุกกี้ กรุณาเพิ่มคุกกี้ก่อน (คำสั่ง 3 หรือ 9)")
-            return False
-        
-        # หยุดเธรดเก่าทั้งหมดก่อน (ถ้ามี)
-        self.stop_all_monitors()
-        
-        # สร้างเธรดใหม่สำหรับแต่ละ cookie
-        for idx, cookie in enumerate(self.cookies, 1):
-            thread = threading.Thread(target=self._monitor_account, args=(cookie, idx), daemon=True)
-            self.active_monitors[cookie] = thread
-            thread.start()
-            print(f"🔥 เริ่ม Auto Rejoin สำหรับบัญชีที่ {idx} (User ID: {self._extract_userid(cookie)})")
-            time.sleep(1)  # เว้นระยะเพื่อไม่ให้ overload
-        
-        # ส่งแจ้งเตือน Discord
-        if self.discord_enabled and self.webhook_url:
-            self._send_discord_notification("Auto Rejoin Started (Multi-Account)", f"กำลังรัน {len(self.cookies)} บัญชี")
-        return True
-    
-    def stop_all_monitors(self):
-        """หยุดการทำงานของทุกเธรด"""
-        # วิธีง่ายๆ: ตั้ง flag is_running = False ให้แต่ละเธรด
-        # แต่เนื่องจากเราใช้ daemon=True และ loop while not stop_flag เราจำเป็นต้องมี flag
-        # เพื่อความง่าย เราจะไม่ implement การหยุดแบบละเอียด แต่ถ้าต้องการหยุดจริงจัง ต้องเพิ่ม event
-        # ปัจจุบันปล่อยให้จบเมื่อปิดโปรแกรม
-        pass
-    
-    def _monitor_account(self, cookie, account_num):
-        """ตรวจสอบและ rejoin สำหรับ 1 บัญชี"""
-        print(f"[บัญชี {account_num}] เริ่มตรวจสอบสถานะเกม...")
-        while True:
-            # ตรวจสอบว่าเกมยังทำงานอยู่หรือไม่ (共用เกม ID)
-            if not self._is_game_running():
-                print(f"[บัญชี {account_num}] ⚠️ เกมหลุด! กำลัง reconnect...")
-                self._rejoin_with_cookie(cookie, account_num)
-                if self.discord_enabled and self.webhook_url:
-                    self._send_discord_notification(f"Game Disconnected (Account {account_num})", "Auto rejoin triggered")
-            time.sleep(5)
-    
+    # ------------------ ตรวจสอบเกม ------------------
     def _is_game_running(self):
-        """ตรวจสอบเกมโดยรวม (เหมือนเดิม)"""
         for proc in psutil.process_iter(['name']):
-            if proc.info['name'] and 'Roblox' in proc.info['name']:
+            name = proc.info['name']
+            if name and ('Roblox' in name or 'RobloxPlayer' in name):
                 return True
         try:
             r = requests.get(f"https://games.roblox.com/v1/games/{self.game_id}", timeout=5)
@@ -246,19 +187,32 @@ class RobloxRejoinSystem:
         except:
             return False
     
+    # ------------------ REJOIN หลัก (ใช้ chromedriver จาก pkg) ------------------
     def _rejoin_with_cookie(self, cookie, account_num):
-        """rejoin โดยใช้ cookie ที่กำหนด"""
         print(f"[บัญชี {account_num}] 🔐 ใช้ cookie rejoin...")
+        
+        # ตรวจสอบว่ามี chromedriver จริงไหม
+        if not os.path.exists(CHROMEDRIVER_PATH):
+            print(f"[บัญชี {account_num}] ❌ ไม่พบ chromedriver ที่ {CHROMEDRIVER_PATH}")
+            print("   กรุณาติดตั้ง: pkg install chromedriver")
+            return
+        
         opts = Options()
         opts.add_argument("--headless")
         opts.add_argument("--no-sandbox")
         opts.add_argument("--disable-dev-shm-usage")
-        # ใช้ user-data-dir แยกตามบัญชีเพื่อป้องกันการชนกัน
+        opts.add_argument("--disable-gpu")
+        opts.add_argument("--remote-debugging-port=9222")
+        opts.binary_location = CHROME_BINARY
+        
+        # สร้าง user-data-dir แยกตามบัญชี
         user_data_dir = f"/tmp/roblox_profile_{account_num}"
         opts.add_argument(f"--user-data-dir={user_data_dir}")
-        service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service, options=opts)
+        
+        service = Service(CHROMEDRIVER_PATH)
+        driver = None
         try:
+            driver = webdriver.Chrome(service=service, options=opts)
             driver.get("https://www.roblox.com")
             driver.add_cookie({'name': '.ROBLOSECURITY', 'value': cookie, 'domain': '.roblox.com'})
             driver.get(f"https://www.roblox.com/games/{self.game_id}")
@@ -270,9 +224,9 @@ class RobloxRejoinSystem:
         except Exception as e:
             print(f"[บัญชี {account_num}] ❌ Rejoin ล้มเหลว: {e}")
         finally:
-            driver.quit()
+            if driver:
+                driver.quit()
     
-    # ------------------ ฟังก์ชันเดี่ยว (ไม่ใช้ cookie) ------------------
     def _rejoin_with_api(self):
         print("🔧 ใช้ API rejoin (ไม่ต้องใช้ cookie)")
         headers = {'User-Agent': 'Mozilla/5.0', 'Content-Type': 'application/json'}
@@ -288,7 +242,44 @@ class RobloxRejoinSystem:
             print(f"❌ Lỗi API: {e}")
             return False
     
-    # ------------------ [2] Setup Game ID ------------------
+    # ------------------ มอนิเตอร์แต่ละบัญชี ------------------
+    def _monitor_account(self, cookie, account_num):
+        print(f"[บัญชี {account_num}] เริ่มตรวจสอบสถานะเกม...")
+        while True:
+            if not self._is_game_running():
+                print(f"[บัญชี {account_num}] ⚠️ เกมหลุด! กำลัง reconnect...")
+                self._rejoin_with_cookie(cookie, account_num)
+                if self.discord_enabled and self.webhook_url:
+                    self._send_discord_notification(f"Game Disconnected (Account {account_num})", "Auto rejoin triggered")
+            self._update_system_info()
+            time.sleep(5)
+    
+    def start_auto_rejoin_all(self):
+        if not self.game_id:
+            print("❌ Chưa thiết lập Game ID! Hãy chọn [2] trước.")
+            return False
+        if not self.cookies:
+            print("❌ ไม่มีคุกกี้ กรุณาเพิ่มคุกกี้ก่อน (คำสั่ง 3 หรือ 9)")
+            return False
+        
+        # หยุดเธรดเก่า (ถ้ามี)
+        for t in self.active_monitors.values():
+            # เนื่องจากเป็น daemon thread ไม่ต้องหยุด explicit
+            pass
+        self.active_monitors.clear()
+        
+        for idx, cookie in enumerate(self.cookies, 1):
+            thread = threading.Thread(target=self._monitor_account, args=(cookie, idx), daemon=True)
+            self.active_monitors[cookie] = thread
+            thread.start()
+            print(f"🔥 เริ่ม Auto Rejoin สำหรับบัญชีที่ {idx} (User ID: {self._extract_userid(cookie)})")
+            time.sleep(1)
+        
+        if self.discord_enabled and self.webhook_url:
+            self._send_discord_notification("Auto Rejoin Started (Multi-Account)", f"กำลังรัน {len(self.cookies)} บัญชี")
+        return True
+    
+    # ------------------ ฟังก์ชันเมนูอื่นๆ ------------------
     def setup_game_id(self, gid):
         self.game_id = gid
         if gid not in self.packages:
@@ -303,12 +294,9 @@ class RobloxRejoinSystem:
         self.save_config()
         return True
     
-    # ------------------ [3] Auto Login with Cookie (เพิ่มทีละอัน) ------------------
     def auto_login_with_cookie(self, cookie):
-        """เพิ่ม cookie 1 อัน (เรียกโดยเมนู 3)"""
         return self.add_cookie(cookie)
     
-    # ------------------ [4] Discord Webhook ------------------
     def enable_discord_webhook(self, url):
         self.webhook_url = url
         self.discord_enabled = True
@@ -339,7 +327,6 @@ class RobloxRejoinSystem:
         except:
             pass
     
-    # ------------------ [5] Auto Check User Setup (demo) ------------------
     def auto_check_user_setup(self):
         print("🔍 ตรวจสอบ user setup...")
         if self.cookies:
@@ -354,7 +341,6 @@ class RobloxRejoinSystem:
             self._send_discord_notification("User Setup Verified", f"User ID: {uid}")
         return True
     
-    # ------------------ [6] Set Package ------------------
     def set_package(self):
         if not self.game_id:
             print("❌ ยังไม่มี Game ID กรุณาเลือก [2] ก่อน")
@@ -377,7 +363,6 @@ class RobloxRejoinSystem:
         except:
             print("❌ ป้อนตัวเลขเท่านั้น")
     
-    # ------------------ [7] Configure Package Prefix ------------------
     def configure_package_prefix(self):
         if not self.game_id:
             print("❌ ยังไม่มี Game ID")
@@ -405,7 +390,6 @@ class RobloxRejoinSystem:
         except:
             print("❌ เกิดข้อผิดพลาด")
     
-    # ------------------ [8] Auto Change Android ID ------------------
     def auto_change_android_id(self):
         print("🔄 กำลังเปลี่ยน Android ID...")
         new_id = ''.join(random.choices(string.hexdigits, k=16)).lower()
@@ -422,9 +406,7 @@ class RobloxRejoinSystem:
         except:
             pass
     
-    # ------------------ เพิ่มเมนูจัดการคุกกี้หลายตัว ------------------
     def manage_cookies_menu(self):
-        """เมนูย่อยสำหรับจัดการคุกกี้หลายรายการ"""
         while True:
             print("\n--- จัดการคุกกี้หลายบัญชี ---")
             print("1. แสดงรายการคุกกี้ทั้งหมด")
@@ -459,7 +441,6 @@ class RobloxRejoinSystem:
             else:
                 print("❌ ไม่มีตัวเลือกนี้")
     
-    # ------------------ อัปเดตข้อมูลระบบ ------------------
     def _update_system_info(self):
         try:
             cpu = psutil.cpu_percent(interval=1)
@@ -485,13 +466,10 @@ class RobloxRejoinSystem:
         while True:
             print("\n" + "="*50)
             print("★ VIET NAM VERSION ★")
-            print("Version: 10.0.0 | Created By zam2109shop.vn | Bản hoàn chỉnh")
-            print("Last Update: 17/3/2026")
-            print("Credit: zam2109shop.vn")
-            print("Manager Rejoin: rejoinmanager.zam2109shop.vn")
+            print("Version: 10.0.0 | Created By YOUR_NAME | Bản hoàn chỉnh")
+            print("Last Update: 20/5/2026")
             print("Method: Check Executor")
             print("---")
-            print("https://discord.gg/3f6SUbGneC - SUPER Vip")
             print("| LÊNH    | MÔ TẢ LÊNH    |")
             print("| [ 1 ]   | Start Auto Rejoin (ALL accounts) |")
             print("| [ 2 ]   | Setup Game ID for Packages |")
@@ -504,7 +482,7 @@ class RobloxRejoinSystem:
             print("| [ 9 ]   | Manage Multiple Cookies (Add/Remove/List) |")
             print("| [ 0 ]   | Exit |")
             print("="*50)
-            cmd = input("[ zam2109shop.vn ] - Enter command: ").strip()
+            cmd = input("[ YOUR_TOOL ] - Enter command: ").strip()
             
             if cmd == "1":
                 self.start_auto_rejoin_all()
@@ -543,8 +521,14 @@ class RobloxRejoinSystem:
 
 # ================== RUN ==================
 if __name__ == "__main__":
+    # ตรวจสอบ Termux environment
     if os.path.exists("/data/data/com.termux/files/home"):
-        print("✅ กำลังรันใน Termux - ควรติดตั้ง: pkg install python chromium chromedriver")
+        print("✅ กำลังรันใน Termux")
+        # ตรวจสอบ chromium และ chromedriver
+        if not os.path.exists(CHROME_BINARY):
+            print("⚠️ ไม่พบ chromium กรุณาติดตั้ง: pkg install chromium")
+        if not os.path.exists(CHROMEDRIVER_PATH):
+            print("⚠️ ไม่พบ chromedriver กรุณาติดตั้ง: pkg install chromedriver")
     print("🚀 เริ่มระบบ...")
     app = RobloxRejoinSystem()
     try:
